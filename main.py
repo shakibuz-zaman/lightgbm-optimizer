@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Feb 12 00:30:36 2025
+
+@author: mdshakibuzzaman
+"""
+import sys
+sys.setrecursionlimit(2000)  # Increase the recursion limit
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score
+from lightgbm import LGBMClassifier
+import random
+import gc
+import os
+
+# Set environment variables to optimize MKL
+os.environ["MKL_DEBUG_CPU_TYPE"] = "5"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
+# Load Dataset
+from sklearn.datasets import load_diabetes
+data = load_diabetes(as_frame=True)
+X = data.data
+y = (data.target > data.target.median()).astype(int)  # Binary classification
+
+# Sample a smaller dataset for tuning
+X_train_sample, _, y_train_sample, _ = train_test_split(X, y, test_size=0.8, random_state=42)
+
+# Define Simulated Annealing
+class SimulatedAnnealing:
+    def __init__(self, model, param_space, X_train, y_train, X_test, y_test, T=200, alpha=0.85, max_iter=25):
+        self.model = model
+        self.param_space = param_space
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_test = X_test
+        self.y_test = y_test
+        self.T = T
+        self.alpha = alpha
+        self.max_iter = max_iter
+        self.best_params = None
+        self.best_score = -np.inf
+
+    def random_sample(self):
+        sampled_params = {}
+        for key, value in self.param_space.items():
+            if isinstance(value, tuple):  # Continuous range
+                sampled_params[key] = random.uniform(*value)
+            elif isinstance(value, range):  # Integer range
+                sampled_params[key] = random.choice(value)
+            else:  # Categorical
+                sampled_params[key] = random.choice(value)
+        
+        # Ensure parameters are in valid ranges and cast to the correct type
+        if "learning_rate" in sampled_params:
+            sampled_params["learning_rate"] = max(sampled_params["learning_rate"], 1e-4)  # Clamp to avoid zero
+        if "num_leaves" in sampled_params:
+            sampled_params["num_leaves"] = int(sampled_params["num_leaves"])  # Ensure integer
+        if "max_depth" in sampled_params:
+            sampled_params["max_depth"] = int(sampled_params["max_depth"])  # Ensure integer
+        if "min_data_in_leaf" in sampled_params:
+            sampled_params["min_data_in_leaf"] = int(sampled_params["min_data_in_leaf"])  # Ensure integer
+
+        return sampled_params
+
+    def evaluate(self, params):
+        model = self.model(**params, n_jobs=1)  # LightGBM with 1 thread
+        model.fit(self.X_train, self.y_train, eval_set=[(self.X_test, self.y_test)],
+                  verbose=False, early_stopping_rounds=10)
+        preds = model.predict(self.X_test)
+        gc.collect()  # Free memory
+        return f1_score(self.y_test, preds)
+
+    def anneal(self):
+        current_params = self.random_sample()
+        current_score = self.evaluate(current_params)
+        self.best_params = current_params
+        self.best_score = current_score
+
+        T = self.T
+        while T > 1:
+            for _ in range(self.max_iter):
+                new_params = self.random_sample()
+                new_score = self.evaluate(new_params)
+                if new_score > current_score or np.exp((new_score - current_score) / T) > random.random():
+                    current_params = new_params
+                    current_score = new_score
+                    if new_score > self.best_score:
+                        self.best_params = new_params
+                        self.best_score = new_score
+                gc.collect()  # Free memory after each iteration
+            T *= self.alpha
+        return self.best_params, self.best_score
+
+# Hyperparameter Space
+param_space = {
+    "learning_rate": (0.01, 0.3),
+    "num_leaves": (20, 100),         # Integer range
+    "max_depth": (3, 10),           # Integer range
+    "min_data_in_leaf": (10, 50),   # Integer range
+    "subsample": (0.5, 1.0)         # Continuous range
+}
+
+# Run Simulated Annealing
+sa = SimulatedAnnealing(LGBMClassifier, param_space, X_train_sample, y_train_sample, X, y)
+best_params, best_score = sa.anneal()
+
+print("Best Params:", best_params)
+print("Best Score:", best_score)
+
+
+
+
+
+# Step 5: Compare with Random Search or Grid Search
+from sklearn.model_selection import RandomizedSearchCV
+
+random_search = RandomizedSearchCV(
+    estimator=LGBMClassifier(),
+    param_distributions={
+        "learning_rate": np.linspace(0.01, 0.3, 10),
+        "num_leaves": range(20, 100, 10),
+        "max_depth": range(3, 10),
+        "min_data_in_leaf": range(10, 50, 5),
+        "subsample": np.linspace(0.5, 1.0, 5)
+    },
+    n_iter=50,
+    scoring='f1',
+    cv=3,
+    random_state=42
+)
+
+random_search.fit(X_train_sample, y_train_sample)
+print("Best Random Search Params:", random_search.best_params_)
+print("Best Random Search F1 Score:", random_search.best_score_)
