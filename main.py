@@ -8,6 +8,7 @@ Created on Wed Feb 12 00:30:36 2025
 import sys
 sys.setrecursionlimit(2000)  # Increase the recursion limit
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -45,6 +46,7 @@ class SimulatedAnnealing:
         self.max_iter = max_iter
         self.best_params = None
         self.best_score = -np.inf
+        self.scores = []  # Track F1 scores over iterations
 
     def random_sample(self):
         sampled_params = {}
@@ -81,12 +83,14 @@ class SimulatedAnnealing:
         current_score = self.evaluate(current_params)
         self.best_params = current_params
         self.best_score = current_score
+        self.scores.append(current_score)  # Record the initial score
 
         T = self.T
         while T > 1:
             for _ in range(self.max_iter):
                 new_params = self.random_sample()
                 new_score = self.evaluate(new_params)
+                self.scores.append(new_score)  # Record the score for each iteration
                 if new_score > current_score or np.exp((new_score - current_score) / T) > random.random():
                     current_params = new_params
                     current_score = new_score
@@ -95,7 +99,7 @@ class SimulatedAnnealing:
                         self.best_score = new_score
                 gc.collect()  # Free memory after each iteration
             T *= self.alpha
-        return self.best_params, self.best_score
+        return self.best_params, self.best_score, self.scores  # Return scores for plotting
 
 # Hyperparameter Space
 param_space = {
@@ -108,10 +112,19 @@ param_space = {
 
 # Run Simulated Annealing
 sa = SimulatedAnnealing(LGBMClassifier, param_space, X_train_sample, y_train_sample, X, y)
-best_params, best_score = sa.anneal()
+best_params, best_score, scores = sa.anneal()
 
 print("Best Params:", best_params)
 print("Best Score:", best_score)
+
+# Plot F1 Score Progression
+plt.plot(scores, marker='o', linestyle='-', color='b')
+plt.title("Simulated Annealing F1 Score Progression")
+plt.xlabel("Iteration")
+plt.ylabel("F1 Score")
+plt.grid()
+plt.show()
+
 
 
 
