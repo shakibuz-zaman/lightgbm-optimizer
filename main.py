@@ -118,6 +118,7 @@ print("Best Params:", best_params)
 print("Best Score:", best_score)
 
 # Plot F1 Score Progression
+plt.figure(figsize=(10, 6))
 plt.plot(scores, marker='o', linestyle='-', color='b')
 plt.title("Simulated Annealing F1 Score Progression")
 plt.xlabel("Iteration")
@@ -133,21 +134,135 @@ plt.show()
 # Step 5: Compare with Random Search or Grid Search
 from sklearn.model_selection import RandomizedSearchCV
 
+# Track RandomizedSearchCV F1 Scores
+f1_scores_random = []  # To store F1 scores for plotting
+
+# Define parameter space for RandomizedSearchCV
+param_space_random = {
+    "learning_rate": np.linspace(0.01, 0.3, 10),
+    "num_leaves": range(20, 100, 10),
+    "max_depth": range(3, 10),
+    "min_data_in_leaf": range(10, 50, 5),
+    "subsample": np.linspace(0.5, 1.0, 5),
+}
+
+# Custom scoring function to track F1 scores during RandomizedSearchCV
+def custom_scoring(estimator, X, y):
+    preds = estimator.predict(X)
+    score = f1_score(y, preds)
+    f1_scores_random.append(score)  # Append score to the list
+    return score
+
+# Run RandomizedSearchCV
 random_search = RandomizedSearchCV(
     estimator=LGBMClassifier(),
-    param_distributions={
-        "learning_rate": np.linspace(0.01, 0.3, 10),
-        "num_leaves": range(20, 100, 10),
-        "max_depth": range(3, 10),
-        "min_data_in_leaf": range(10, 50, 5),
-        "subsample": np.linspace(0.5, 1.0, 5)
-    },
-    n_iter=50,
-    scoring='f1',
-    cv=3,
+    param_distributions=param_space_random,
+    n_iter=50,  # Number of random samples
+    scoring=custom_scoring,
+    cv=3,  # 3-fold cross-validation
+    verbose=1,
     random_state=42
 )
 
 random_search.fit(X_train_sample, y_train_sample)
-print("Best Random Search Params:", random_search.best_params_)
-print("Best Random Search F1 Score:", random_search.best_score_)
+
+# Best parameters and scores
+best_random_params = random_search.best_params_
+best_random_score = random_search.best_score_
+
+print("Best Random Search Params:", best_random_params)
+print("Best Random Search F1 Score:", best_random_score)
+
+######################
+plt.figure(figsize=(10, 6))
+
+
+# RandomizedSearchCV
+plt.plot(f1_scores_random, marker='x', linestyle='--', label="RandomizedSearchCV", color='r')
+
+plt.title("RandomizedSearchCV F1 Score Progression")
+plt.xlabel("Iteration")
+plt.ylabel("F1 Score")
+plt.legend()
+plt.grid()
+plt.show()
+######################
+
+######################
+######################
+# Plot F1 Score Progression for Both Methods
+plt.figure(figsize=(10, 6))
+
+# Simulated Annealing
+plt.plot(scores, marker='o', linestyle='-', label="Simulated Annealing", color='b')
+
+# RandomizedSearchCV
+plt.plot(f1_scores_random, marker='x', linestyle='--', label="RandomizedSearchCV", color='r')
+
+plt.title("F1 Score Progression: Simulated Annealing vs RandomizedSearchCV")
+plt.xlabel("Iteration")
+plt.ylabel("F1 Score")
+plt.legend()
+plt.grid()
+plt.show()
+
+
+#######
+from sklearn.model_selection import GridSearchCV
+from lightgbm import LGBMClassifier
+from sklearn.metrics import make_scorer, f1_score
+
+# Define parameter grid
+param_grid = {
+    'learning_rate': [0.01, 0.05, 0.1, 0.2, 0.3],
+    'num_leaves': [20, 40, 60, 80, 100],
+    'max_depth': [3, 5, 7, 10],
+    'min_data_in_leaf': [10, 20, 30, 40, 50],
+    'subsample': [0.5, 0.7, 0.9, 1.0]
+}
+
+# Define custom scoring function
+scorer = make_scorer(f1_score, greater_is_better=True)
+
+# Initialize LightGBM model
+lgbm = LGBMClassifier(n_jobs=-1)
+
+# Initialize GridSearchCV
+grid_search = GridSearchCV(
+    estimator=lgbm,
+    param_grid=param_grid,
+    scoring=scorer,
+    cv=3,  # 3-fold cross-validation
+    verbose=1,
+    n_jobs=-1  # Parallel processing
+)
+
+# Run GridSearchCV
+grid_search.fit(X_train_sample, y_train_sample)
+
+# Best parameters and F1 score
+best_grid_params = grid_search.best_params_
+best_grid_score = grid_search.best_score_
+
+print("Best Grid Search Parameters:", best_grid_params)
+print("Best Grid Search F1 Score:", best_grid_score)
+##
+results = pd.DataFrame(grid_search.cv_results_)
+
+# Plot the mean F1 score for each hyperparameter combination
+plt.figure(figsize=(10, 6))
+plt.plot(results['mean_test_score'], marker='o', linestyle='-', color='b', label="Mean F1 Score")
+plt.fill_between(
+    range(len(results['mean_test_score'])),
+    results['mean_test_score'] - results['std_test_score'],  # Lower bound
+    results['mean_test_score'] + results['std_test_score'],  # Upper bound
+    color='b', alpha=0.2, label="± 1 Std Dev"
+)
+
+# Annotate the plot
+plt.title("GridSearchCV: F1 Score Across Hyperparameter Combinations")
+plt.xlabel("Hyperparameter Combination Index")
+plt.ylabel("F1 Score")
+plt.legend()
+plt.grid()
+plt.show()
