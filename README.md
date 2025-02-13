@@ -105,14 +105,8 @@ Feel free to contribute by:
 
 Fork the repository and make a pull request with your changes.
 
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
 ---
 
 ### Author
 
 Md. Shakibuzzaman
-
-For any queries or feedback, feel free to reach out at: [your-email@example.com]
